@@ -16,6 +16,7 @@ var $ = jQuery = require('jquery')(window);
 
 const request = require('request');
             console.log("Hello WORLD ");
+            console.log("Hello WORLD ");
 
 var schedule = require('node-schedule');
 
