@@ -1,216 +1,724 @@
-// Setup basic express server
-var express = require('express');
-var app = express();
+var app = require('express')();
+var http = require('http').Server(app);
+var io = require('socket.io')(http);
 var fs = require('fs');
-var server = require('http').createServer(app);
-var io = require('socket.io')(server);
-var port = process.env.PORT || 3000;
-var loopLimit = 0;
 
-server.listen(port, function () {
-  console.log('Server listening at port %d', port);
-  fs.writeFile(__dirname + '/start.log', 'started'); 
+const express = require('express');
+const path = require('path');
+app.use(express.static(path.join(__dirname, 'public')));
+
+var jsdom = require("jsdom");
+const { JSDOM } = jsdom;
+const { window } = new JSDOM();
+const { document } = (new JSDOM('')).window;
+global.document = document;
+var $ = jQuery = require('jquery')(window);
+
+const request = require('request');
+
+var schedule = require('node-schedule');
+
+var j = schedule.scheduleJob('50 * * * * *', function () {
+    //console.log('The answer to life, the universe, and everything!');
 });
 
-// Routing
-app.use(express.static(__dirname));
-
-// Entire gameCollection Object holds all games and info
-
-var gameCollection =  new function() {
-
-  this.totalGameCount = 0,
-  this.gameList = []
-
-};
-
-function buildGame(socket) {
-
-
- var gameObject = {};
- gameObject.id = (Math.random()+1).toString(36).slice(2, 18);
- gameObject.playerOne = socket.username;
- gameObject.playerTwo = null;
- gameCollection.totalGameCount ++;
- gameCollection.gameList.push({gameObject});
-
- console.log("Game Created by "+ socket.username + " w/ " + gameObject.id);
- io.emit('gameCreated', {
-  username: socket.username,
-  gameId: gameObject.id
+// routing
+app.get('/', function (req, res) {
+    res.sendFile(__dirname + '/index.html');
 });
 
+//var url = 'http://localhost:3030/';
+var url = 'http://192.168.20.196:7373/';
+var serverAvailable = true;
+var profileIds = {};
+var waitingList = [];
+var questionsAnswered = [];
+//var quiz = [];
+////group:
+var questionIndex = 0;
+var questions = [];
+var gameIsStarted = false;
+var questionResponses = [];
+var answerTimeout = 5000; //ms
+var scoreMode = false;
+var isPaused = false;
 
-}
+io.sockets.on('connection', function (socket) {
 
-function killGame(socket) {
+    socket.on('add_admin', function () {
+        socket.join('admin');
+    });
 
-  var notInGame = true;
-  for(var i = 0; i < gameCollection.totalGameCount; i++){
+    socket.on('add_to_group_room', function () {
+        if (!gameIsStarted) {
+            socket.join('group');
+            socket.emit('updatechat', 'SERVER', 'You have entered the game');
+            io.to('group').emit('update_room_count', io.sockets.adapter.rooms['group'].length);
+            io.to('admin').emit('update_room_count', io.sockets.adapter.rooms['group'].length);
+        } else {
+            socket.emit('updatechat', 'SERVER', 'game is already started');
+        }
+    });
 
-    var gameId = gameCollection.gameList[i]['gameObject']['id']
-    var plyr1Tmp = gameCollection.gameList[i]['gameObject']['playerOne'];
-    var plyr2Tmp = gameCollection.gameList[i]['gameObject']['playerTwo'];
-    
-    if (plyr1Tmp == socket.username){
-      --gameCollection.totalGameCount; 
-      console.log("Destroy Game "+ gameId + "!");
-      gameCollection.gameList.splice(i, 1);
-      console.log(gameCollection.gameList);
-      socket.emit('leftGame', { gameId: gameId });
-      io.emit('gameDestroyed', {gameId: gameId, gameOwner: socket.username });
-      notInGame = false;
-    } 
-    else if (plyr2Tmp == socket.username) {
-      gameCollection.gameList[i]['gameObject']['playerTwo'] = null;
-      console.log(socket.username + " has left " + gameId);
-      socket.emit('leftGame', { gameId: gameId });
-      console.log(gameCollection.gameList[i]['gameObject']);
-      notInGame = false;
+    socket.on('start_group_game', function (groupGameId) {
+        if (io.sockets.adapter.rooms['group']) {
+            gameIsStarted = true;
+            socket.emit('updatechat', 'SERVER', 'Game started with ' + io.sockets.adapter.rooms['group'].length + ' players');
 
-    } 
+            if (serverAvailable) {
+                const options = {
+                    url: url + 'api/GetAllGroupGameQuestions?groupGameId=' + groupGameId,
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Accept-Charset': 'utf-8',
+                        'token': socket.token
+                    },
+                    form: {
+                        quizId: socket.quizId
+                    }
+                };
 
-  }
+                request(options, function (err, res, body) {
+                    questions = JSON.parse(body).Data;
+                    showQuestion();
+                });
+            }
+            else {
+                questions = getFakeQuestions().Data.Questions;
+                showQuestion();
+            }
+        } else {
+            socket.emit('updatechat', 'SERVER', 'There is no one in the room');
+        }
+    });
 
-  if (notInGame == true){
-    socket.emit('notInGame');
-  }
+    socket.on('pause_game', function () {
+        if (isPaused) {
+            isPaused = false;
+            console.log("game resumed");
+        } else {
+            isPaused = true;
+            console.log("game paused");
+        }
+    });
+
+    function showQuestion() {
+        var question = questions[questionIndex];
 
 
-}
+        if (question) {
+            io.to('group').emit('show_question', { question: question, scoreMode: scoreMode });
 
-function gameSeeker (socket) {
-  ++loopLimit;
-  if (( gameCollection.totalGameCount == 0) || (loopLimit >= 20)) {
+            //timer for showing answer
+            var timer = setInterval(function () {
+                clearInterval(timer);
+                var t2 = setInterval(function () {
+                    if (!isPaused) {
+                        clearInterval(t2);
+                        io.to('group').emit('show_answer', { answer: question.Answer, stat: groupByArray(questionResponses, "Answer"), scoreMode: scoreMode });
+                        questionIndex++;
 
-    buildGame(socket);
-    loopLimit = 0;
-
-  } else {
-    var rndPick = Math.floor(Math.random() * gameCollection.totalGameCount);
-    if (gameCollection.gameList[rndPick]['gameObject']['playerTwo'] == null)
-    {
-      gameCollection.gameList[rndPick]['gameObject']['playerTwo'] = socket.username;
-      socket.emit('joinSuccess', {
-        gameId: gameCollection.gameList[rndPick]['gameObject']['id'] });
-
-      console.log( socket.username + " has been added to: " + gameCollection.gameList[rndPick]['gameObject']['id']);
-
-    } else {
-
-      gameSeeker(socket);
+                        //timer for showing next question
+                        var timer2 = setInterval(function () {
+                            clearInterval(timer2);
+                            var t = setInterval(function () {
+                                if (!isPaused) {
+                                    clearInterval(t);
+                                    questionResponses = [];
+                                    showQuestion();
+                                }
+                                //console.log('i')
+                            }, 1000);
+                        }, question.Delay * 1000);
+                    }
+                    //console.log('r')
+                }, 1000);
+            }, answerTimeout);
+        }
+        else {
+            questionIndex = 0;
+            gameIsStarted = false;
+        }
     }
-  }
-}
 
+    socket.on('save_response', function (result) {
+        //console.log('DB: profileId:' + socket.profileId + ' questionId:' + result.questionId + ' response:' + result.response);
+        var question = questions.filter(q => q.QuestionID == result.questionId)[0];
+        var correctAnswer = false;
+        if (result.response == question.Answer) {
+            correctAnswer = true;
+        }
 
-// Chatroom
+        questionResponses.push({ 'ProfileId': socket.profileId, 'QuestionId': result.questionId, 'Answer': result.response, 'CorrectAnswer': correctAnswer });
 
-var numUsers = 0;
-
-io.on('connection', function (socket) {
-  var addedUser = false;
-
-  // when the client emits 'new message', this listens and executes
-  socket.on('new message', function (data) {
-    // we tell the client to execute 'new message'
-    socket.broadcast.emit('new message', {
-      username: socket.username,
-      message: data
+        //if not in score mode and answer is wrong, lose game is called
+        if (!scoreMode && !correctAnswer) {
+            socket.emit("lose_game");
+        }
     });
-  });
 
-  // when the client emits 'add user', this listens and executes
-  socket.on('add user', function (username) {
-    if (addedUser) return;
-
-    // we store the username in the socket session for this client
-    socket.username = username;
-    ++numUsers;
-    addedUser = true;
-    socket.emit('login', {
-      numUsers: numUsers
-    });
-    // echo globally (all clients) that a person has connected
-    socket.broadcast.emit('user joined', {
-      username: socket.username,
-      numUsers: numUsers
-    });
-  });
-
-  // when the client emits 'typing', we broadcast it to others
-  socket.on('typing', function () {
-    socket.broadcast.emit('typing', {
-      username: socket.username
-    });
-  });
-
-  // when the client emits 'stop typing', we broadcast it to others
-  socket.on('stop typing', function () {
-    socket.broadcast.emit('stop typing', {
-      username: socket.username
-    });
-  });
-
-  // when the user disconnects.. perform this
-  socket.on('disconnect', function () {
-    if (addedUser) {
-      --numUsers;
-      killGame(socket);
-
-      // echo globally that this client has left
-      socket.broadcast.emit('user left', {
-        username: socket.username,
-        numUsers: numUsers
-      });
+    function groupByArray(xs, key) {
+        return count(xs.reduce(function (rv, x) {
+            let v = key instanceof Function ? key(x) : x[key];
+            let el = rv.find((r) => r && r.key === v);
+            if (el) {
+                el.values.push(1);
+            } else {
+                rv.push({ key: v, values: [1] });
+            }
+            return rv;
+        }, []));
     }
-  });
 
-
-  socket.on('joinGame', function (){
-    console.log(socket.username + " wants to join a game");
-
-    var alreadyInGame = false;
-
-    for(var i = 0; i < gameCollection.totalGameCount; i++){
-      var plyr1Tmp = gameCollection.gameList[i]['gameObject']['playerOne'];
-      var plyr2Tmp = gameCollection.gameList[i]['gameObject']['playerTwo'];
-      if (plyr1Tmp == socket.username || plyr2Tmp == socket.username){
-        alreadyInGame = true;
-        console.log(socket.username + " already has a Game!");
-
-        socket.emit('alreadyJoined', {
-          gameId: gameCollection.gameList[i]['gameObject']['id']
+    function count(arr) {
+        var result = [];
+        $.each(arr, function (k, v) {
+            result.push({ 'key': v.key, 'count': v.values.length });
         });
-
-      }
-
-    }
-    if (alreadyInGame == false){
-
-
-      gameSeeker(socket);
-      
+        return result;
     }
 
-  });
 
 
-  socket.on('leaveGame', function() {
 
 
-    if (gameCollection.totalGameCount == 0){
-     socket.emit('notInGame');
-     
-   }
 
-   else {
-    killGame(socket);
-  }
+
+
+
+
+
+
+
+
+
+
+
+    // when the client emits 'adduser', this listens and executes
+    socket.on('adduser', function (profileId, token) {
+        // we store the profileId in the socket session for this client
+        socket.token = token;
+        socket.profileId = profileId;
+        socket.timer = 0;
+        socket.countAnswer = 0;
+        // add the client's profileId to the global list
+        profileIds[profileId] = socket.id;
+        //console.log(profileIds);
+
+    });
+    socket.on('adduserReconnect', function (profileId, opponetId, token) {
+        // we store the profileId in the socket session for this client
+        socket.token = token;
+        socket.profileId = profileId;
+        socket.opponentId = opponetId;
+        socket.timer = 0;
+        // add the client's profileId to the global list
+        profileIds[profileId] = socket.id;
+        console.log("adduserReconnect       " + profileIds);
+
+    });
+
+    //user A
+    socket.on('submit_opponent', function (catId, opponentId) {
+        //socket.quiz = [];
+        socket.opponentId = opponentId;
+        socket.catId = catId;
+
+        if (socket.profileId == opponentId) {
+            io.sockets.connected[profileIds[socket.profileId]].emit('message', 'Error', 'You can not play with yourself');
+            return;
+        }
+
+        setTimeout(function () {
+            if (opponentId != 0) {
+                console.log('DB: SaveInvite(profileId:' + socket.profileId + ', opponentId:' + socket.opponentId + ', catId:' + catId + ')');
+
+                const options = {
+                    url: url + 'api/PrepareMulti',
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Accept-Charset': 'utf-8',
+                        'token': socket.token
+                    },
+                    form: {
+                        CatId: catId,
+                        OpponentId: opponentId
+                    }
+                };
+                if (serverAvailable) {
+                    request(options, function (err, res, body) {
+                        if (err)
+                            console.log(err);
+                        else {
+                            if (JSON.parse(body).Data) {
+                                let result = JSON.parse(body).Data[0];
+                                console.log(result);
+                                socket.quizId = result.QuizID;
+                                socket.matchId = result.MatchID;
+                                socket.matchId2 = result.MatchID2;
+
+                                console.log("invite_done   " + result.InviteID, result.MatchID);
+
+                                io.sockets.connected[profileIds[socket.profileId]].emit('invite_done', result.InviteID, result.MatchID);
+
+                                if (profileIds[socket.opponentId]) {
+                                    io.sockets.connected[profileIds[opponentId]].emit('invite_user', socket.profileId, catId, socket.matchId);
+                                }
+
+                            }
+                            else {
+                                console.log(JSON.parse(body))
+                            }
+                        }
+                    });
+                }
+                else {
+                    socket.quizId = 100;
+                    socket.matchId = 200;
+                    socket.matchId2 = 201;
+
+                    io.sockets.connected[profileIds[socket.profileId]].emit('invite_done', 11, 200);
+
+                    io.sockets.connected[profileIds[opponentId]].emit('invite_user', socket.profileId, catId);
+                }
+            }
+        }, 1);
+    });
+
+    socket.on('send_invite_again', function (catId, opponentId, matchId) {
+        console.log("oppoentId   " + opponentId);
+        socket.opponentId = opponentId;
+        socket.catId = catId;
+        if (profileIds[socket.opponentId]) {
+            io.sockets.connected[profileIds[opponentId]].emit('invite_user', socket.profileId, catId, matchId);
+        } else {
+            console.log("user not online    " + opponentId);
+        }
+    });
+
+
+
+    //user B
+    socket.on('invite_user_response', function (res, invitedId, inviterId, catId) {
+        socket.opponentId = inviterId;
+        try {
+            if (res) {
+                io.sockets.connected[profileIds[inviterId]].emit('invite_accepted');
+            }
+            else {
+                io.sockets.connected[profileIds[inviterId]].emit('message', 'Notice', 'rejected');
+                io.sockets.connected[profileIds[inviterId]].emit('invite_rejected');
+            }
+        }
+        catch (err) {
+            console.log(err.message);
+        }
+    });
+
+
+
+    //user A/B
+    socket.on('confirm_get_questions', function (order, quizId) {
+        //if (order == 'B')
+        //    socket.quiz.push({ "QuizId": quizId, "ProfileId": socket.profileId, UserAnswers: [] });
+
+        io.sockets.connected[profileIds[socket.profileId]].emit('start');
+    });
+
+    //  edit by farhad
+    socket.on('notify_answered', function (response, question, quizId, score, asnwerScore) {
+
+        console.log("score oppnet is " + score + "  profileId" + socket.profileId);
+        if (profileIds[socket.opponentId]) {
+            io.sockets.connected[profileIds[socket.opponentId]].emit('notify_answered', response, score, asnwerScore);
+        } else {
+            console.log("oppnect user is disconnected");
+        }
+    });
+
+    // farhad
+    socket.on('get_next_question', function () {
+        console.log("get_next_question   " + socket.profileId);
+        if (profileIds[socket.profileId])
+            io.sockets.connected[profileIds[socket.profileId]].emit('get_next_question');
+        if (profileIds[socket.opponentId])
+            io.sockets.connected[profileIds[socket.opponentId]].emit('get_next_question');
+
+    });
+
+    socket.on('quiz_exit', function () {
+        if (profileIds[socket.opponentId]) {
+            io.sockets.connected[profileIds[socket.opponentId]].emit('game_finished');
+            console.log("quiz_exit      " + socket.profileId);
+        }
+    });
+
+
+    socket.on('quiz_finished', function (quizId, userAnswers) {
+
+        console.log('DB: SaveQuizResult(quizId:' + quizId + ', matchId:' + socket.matchId + ', userAnswers:' + userAnswers + ')');
+
+    });
+
+
+    //user A/B
+    socket.on('add_to_waiting_list', function (catId) {
+        waitingList.push({ "CatId": catId, "ProfileId": socket.profileId });
+        check_can_play(catId)
+    });
+
+    //user A/B
+    function check_can_play(catId) {
+        //if I'm not in the list, someone has invited me, do nothing
+        if (!waitingList.some(q => q.ProfileId == socket.profileId))
+            return;
+
+        //find opponent
+        var opponentId = 0;
+        $.each(waitingList, function (key, value) {
+            if (value.CatId == catId && value.ProfileId != socket.profileId) {
+                opponentId = value.ProfileId;
+                return false;
+            }
+        });
+        if (opponentId) {
+            //remove me and opponent from waiting list and submit opponent
+            //Edit By Farhad
+            socket.timer = 0;
+            waitingList = waitingList.filter(q => q.ProfileId != opponentId && q.ProfileId != socket.profileId);
+            submit_opponent_auto(catId, opponentId);
+        }
+        else {
+            //wait and call again
+            setTimeout(function () {
+                if (socket.timer < 10) {
+                    check_can_play(catId);
+                    socket.timer++;
+                    console.log(socket.profileId + ":" + socket.timer);
+                }
+                else {
+                    //remove me from waiting list and play with robot
+                    //Edit By Farhad
+                    socket.timer = 0;
+                    waitingList = waitingList.filter(q => q.ProfileId != socket.profileId);
+
+                    // call function notify_robot_selected
+                    // socket.emit('notify_robot_selected', catId);
+                    notify_robot_selected(catId);
+
+                }
+            }, 1000)
+        }
+    }
+
+    //user A
+    function notify_robot_selected(catId) {
+        //socket.quiz = [];
+        socket.opponentId = 1;
+        socket.catId = catId;
+
+        setTimeout(function () {
+            console.log('DB: SaveInvite(profileId:' + socket.profileId + ', opponentId:' + socket.opponentId + ', catId:' + catId + ') to play with robot');
+
+            const options = {
+                url: url + 'api/PrepareMulti',
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Accept-Charset': 'utf-8',
+                    'token': socket.token
+                },
+                form: {
+                    CatId: catId,
+                    OpponentId: socket.opponentId
+                }
+            };
+            if (serverAvailable) {
+                request(options, function (err, res, body) {
+                    if (err)
+                        console.log(err);
+                    else {
+                        if (JSON.parse(body).Data) {
+                            let result = JSON.parse(body).Data[0];
+                            console.log(result);
+                            socket.quizId = result.QuizID;
+                            socket.matchId = result.MatchID;
+
+                            socket.emit('notify_robot_selected', catId, socket.matchId);
+
+                        }
+                        else {
+                            console.log(JSON.parse(body))
+                        }
+                    }
+                });
+            } else {
+                socket.quizId = 700;
+                socket.matchId = 800;
+                socket.emit('notify_robot_selected', catId, socket.matchId);
+            }
+        }, 1);
+    }
+
+    //user A
+    socket.on('submit_opponent_robot', function (catId) {
+        pre_start_robot();
+    });
+    //user A
+    function pre_start_robot() {
+        const options = {
+            url: url + 'api/GetQuestions',
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Accept-Charset': 'utf-8',
+                'token': socket.token
+            },
+            form: {
+                quizId: socket.quizId
+            }
+        };
+
+        if (serverAvailable) {
+            request(options, function (err, res, body) {
+                let result = JSON.parse(body).Data;
+                console.log(result);
+
+                if (profileIds[socket.profileId]) {
+                    io.sockets.connected[profileIds[socket.profileId]].emit('get_questions', result);
+                }
+
+                //socket.quiz.push({ "QuizId": result.QuizId, "ProfileId": socket.profileId, UserAnswers: [] });
+            });
+        } else {
+            // edit by farhad
+            io.sockets.connected[profileIds[socket.profileId]].emit('get_questions', getFakeQuestions().Data);
+        }
+    }
+
+    socket.on("confirm_opponet", function (opponetId) {
+        console.log("confirm_opponet");
+        socket.opponentId = opponetId;
+
+    });
+
+    //user B
+    function submit_opponent_auto(catId, opponentId) {
+        socket.opponentId = opponentId;
+        socket.catId = catId;
+
+        setTimeout(function () {
+            if (opponentId != 0) {
+                console.log('DB: SaveInvite(profileId:' + socket.profileId + ', opponentId:' + socket.opponentId + ', catId:' + catId + ')');
+
+                const options = {
+                    url: url + 'api/PrepareMulti',
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Accept-Charset': 'utf-8',
+                        'token': socket.token
+                    },
+                    form: {
+                        CatId: catId,
+                        OpponentId: opponentId,
+                        AutoInvite: true
+                    }
+                };
+                if (serverAvailable) {
+                    request(options, function (err, res, body) {
+                        if (err)
+                            console.log(err);
+                        else {
+                            if (JSON.parse(body).Data) {
+                                let result = JSON.parse(body).Data[0];
+                                console.log(result);
+                                socket.quizId = result.QuizID;
+                                socket.matchId = result.MatchID;
+                                socket.matchId2 = result.MatchID2;
+                                socket.opponentId = opponentId;
+                                // Edit By Farhad
+                                console.log("invite_accepted_auto opponentId " + opponentId + "profileId  " + socket.profileId);
+
+                                if (profileIds[socket.opponentId]) {
+                                    io.sockets.connected[profileIds[socket.profileId]].emit('invite_accepted_auto', opponentId, socket.quizId, socket.matchId, socket.matchId2, false);
+                                    io.sockets.connected[profileIds[opponentId]].emit('invite_accepted_auto', socket.profileId, socket.quizId, socket.matchId, socket.matchId2);
+                                }
+
+                            }
+                            else {
+                                console.log(JSON.parse(body))
+                            }
+                        }
+                    });
+                }
+                else {
+                    socket.quizId = 300;
+                    socket.matchId = 400;
+                    socket.matchId2 = 401;
+                    // Edit By Farhad
+                    console.log("invite_accepted_auto opponentId " + opponentId + "profileId  " + socket.profileId);
+                    io.sockets.connected[profileIds[opponentId]].emit('invite_accepted_auto', socket.profileId, socket.quizId, socket.matchId, socket.matchId2);
+                    io.sockets.connected[profileIds[socket.profileId]].emit('invite_accepted_auto', opponentId, socket.quizId, socket.matchId, socket.matchId2, false);
+
+                }
+            }
+        }, 1);
+    }
+
+    socket.on('pre_start', function (quizId) {
+
+        if (quizId) {
+            socket.quizId = quizId;
+        }
+
+        console.log('quiz From Clinet:' + quizId);
+        console.log('quiz:' + socket.quizId);
+        const options = {
+            url: url + 'api/GetQuestions',
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Accept-Charset': 'utf-8',
+                'token': socket.token
+            },
+            form: {
+                quizId: socket.quizId
+            }
+        };
+        if (serverAvailable) {
+            request(options, function (err, res, body) {
+                let result = JSON.parse(body).Data;
+                console.log(result);
+                if (profileIds[socket.opponentId]) {
+                    io.sockets.connected[profileIds[socket.profileId]].emit('get_questions', result, 'A');
+                    io.sockets.connected[profileIds[socket.opponentId]].emit('get_questions', result, 'B');
+                }
+
+                //socket.quiz.push({ "QuizId": result.QuizId, "ProfileId": socket.profileId, UserAnswers: [] });
+            });
+        } else {
+            io.sockets.connected[profileIds[socket.profileId]].emit('get_questions', getFakeQuestions().Data, 'A');
+            io.sockets.connected[profileIds[socket.opponentId]].emit('get_questions', getFakeQuestions().Data, 'B');
+        }
+    });
+
+    socket.on('cancel_waiting', function () {
+        console.log("cancel_waiting")
+        waitingList = waitingList.filter(q => q.ProfileId != socket.profileId);
+        socket.timer = 0;
+    });
+
+    // when the user disconnects.. perform this
+    socket.on('disconnect', function () {
+        // remove the profileId from global profileIds list
+        delete profileIds[socket.profileId];
+        // update list of users in chat, client-side
+        //io.sockets.emit('updateusers', profileIds);
+        // echo globally that this client has left
+        ////socket.broadcast.emit('updatechat', 'SERVER', socket.profileId + ' has disconnected');
+        if (io.sockets.adapter.rooms['group'])
+            io.to('group').emit('update_room_count', io.sockets.adapter.rooms['group'].length);
+
+    });
 
 });
 
+http.listen(8008, function () {
+    console.log('listening on *:8008');
 });
 
+
+function getFakeQuestions() {
+    return {
+        "Data": {
+            "CatID": 23,
+            "QuizId": 189624,
+            "Questions": [
+                {
+                    "Level": 1,
+                    "Option1": "مادربزرگ",
+                    "Option2": "پدربزرگ",
+                    "Option3": "پدر",
+                    "Option4": "مادر",
+                    "Answer": "مادربزرگ",
+                    "QTitle": "در گویش هرمزگانی \"بی بی\" به چه معناست؟",
+                    "QuestionID": 13561,
+                    "OrderId": 1,
+                    "Delay": 4
+                },
+                {
+                    "Level": 1,
+                    "Option1": "سر",
+                    "Option2": "کبد",
+                    "Option3": "قلوه",
+                    "Option4": "گردن",
+                    "Answer": "قلوه",
+                    "QTitle": "در زبان مازندرانی \"قالوه\" به چه معناست؟",
+                    "QuestionID": 13671,
+                    "OrderId": 2,
+                    "Delay": 4
+                },
+                {
+                    "Level": 1,
+                    "Option1": "صدف",
+                    "Option2": "سوزن",
+                    "Option3": "سنجاق",
+                    "Option4": "هیچکدام",
+                    "Answer": "سنجاق",
+                    "QTitle": "در زبان گیلانی \"سونجاق\" به چه معناست؟",
+                    "QuestionID": 13657,
+                    "OrderId": 3,
+                    "Delay": 4
+                },
+                {
+                    "Level": 1,
+                    "Option1": "پشت چشم تنک کردن",
+                    "Option2": "چشم چرانی",
+                    "Option3": "چشم پاکی",
+                    "Option4": "با جنبه بودن",
+                    "Answer": "پشت چشم تنک کردن",
+                    "QTitle": "اصطلاح \"پوشت چشم تنوک کیدن \" در گویش نیشابوری به چه معناست؟",
+                    "QuestionID": 13533,
+                    "OrderId": 4,
+                    "Delay": 4
+                }
+            ]
+        },
+        "Error": null,
+        "HasError": false
+    }
+}
+//////////// rejected: show list of available random players //////////
+////user A
+//socket.on('add_waiting_list', function (catId) {
+//    add_waiting_list(catId)
+//});
+
+//function add_waiting_list(catId) {
+//    var exists = false;
+//    var profileIdExists = false;
+//    $.each(waitingList, function (key, value) {
+//        if (value.ProfileId == socket.profileId)
+//            profileIdExists = true;
+//        if (value.CatId == catId && value.ProfileId == socket.profileId)
+//            exists = true;
+//    });
+//    if (!exists) {
+//        if (profileIdExists) {
+//            waitingList = waitingList.filter(q => q.ProfileId != socket.profileId);
+//            waitingList.push({ "CatId": catId, "ProfileId": socket.profileId });
+//        }
+//        else
+//            waitingList.push({ "CatId": catId, "ProfileId": socket.profileId });
+
+//        io.sockets.emit('update_waiting_list', waitingList);
+//    }
+//    console.log('waitingList:' + JSON.stringify(waitingList));
+//}
+
+///////////////
 
 

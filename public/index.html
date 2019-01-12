@@ -1,0 +1,274 @@
+<html>
+<body>
+<script src="/socket.io/socket.io.js"></script>
+<script src="/assets/jquery.min.js"></script>
+<script type="text/javascript">
+    var myProfileId = '';
+    var questionList = {};
+    var quizId = 0;
+    var questionIndex = 0;
+    var opponentAnswered = false;
+    var userAnswers = [];
+
+    var questionId = 0;
+    var isLost = false;
+    var isNotified = false;
+    var isLastQuestionResponded = false;
+
+    var socket = io.connect('http://192.168.20.196:8008');
+    //var socket = io.connect('http://localhost:8008');
+
+    socket.on('update_room_count', function (count) {
+        updatechat('current count', count);
+    });
+
+    socket.on('show_question', function (result) {
+        questionId = result.question.QuestionID;
+        if (isLost && !result.scoreMode)
+            updatechat(result.question.QTitle, span(result.question.Option1) + ' ' + span(result.question.Option2) + ' ' + span(result.question.Option3) + ' ' + span(result.question.Option4));
+        else
+            updatechat(result.question.QTitle, button(result.question.Option1) + ' ' + button(result.question.Option2) + ' ' + button(result.question.Option3) + ' ' + button(result.question.Option4));
+    });
+
+    function button(text) {
+        return '<input type="button" value="' + text + '" class="answer" />';
+    }
+
+    function span(text) {
+        return '<span>' + text + '&nbsp;&nbsp;&nbsp;</span>';
+    }
+
+    $(document).on('click', '.answer', function () {
+        saveResponse($(this).val());
+    });
+    
+    function saveResponse(response) {
+        socket.emit('save_response', { response: response, questionId: questionId });
+        isLastQuestionResponded = true;
+    }
+
+    socket.on('show_answer', function (result) {
+        if (!isLastQuestionResponded) {
+            console.log('here')
+            socket.emit('save_response', { response: '', questionId: questionId });
+            isLost = true;
+        }
+        isLastQuestionResponded = false;
+
+        updatechat('Answer is', result.answer);
+        $.each(result.stat, function (k, v) {
+            updatechat(v.key, v.count);
+        });
+        if (isLost && !isNotified && !result.scoreMode) {
+            updatechat('SERVER', 'you lose');
+            isNotified = true;
+        }
+    });
+
+    socket.on('lose_game', function () {
+        isLost = true;
+    });
+
+
+
+
+
+
+
+
+
+
+    // on connection to server, ask for user's name with an anonymous callback
+    socket.on('connect', function () {
+        // call the server-side function 'adduser' and send one parameter (value of prompt)
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get('token');
+        myProfileId = urlParams.get('profileid');
+        socket.emit('adduser', myProfileId, token);
+
+        if (urlParams.get('isAdmin'))
+            socket.emit('add_admin');
+    });
+
+    //user B
+    socket.on('invite_user', function (profileId, catId) {
+        invite_user(profileId, catId)
+    });
+
+    function invite_user(profileId, catId) {
+        var res = confirm('You are invited to play with ' + profileId + ' in cat ' + catId)
+        socket.emit('invite_user_response', res, myProfileId, profileId, catId);
+    }
+
+    //user A
+    socket.on('invite_accepted', function () {
+        socket.emit('pre_start');
+    });
+
+    //user A
+    socket.on('invite_accepted_auto', function (opponentId, quizId, matchId, matchId2) {
+        socket.emit('pre_start', opponentId, quizId, matchId, matchId2);
+    });
+
+    //user A/B
+    socket.on('get_questions', function (questions, order) {
+        questionIndex = 0;
+        questionList = questions.Questions;
+        quizId = questions.QuizId;
+        socket.emit('confirm_get_questions', order, quizId);
+    });
+
+    socket.on('get_questions_robot', function (questions) {
+        questionIndex = 0;
+        console.log('get_questions_robot');
+        questionList = questions.Questions;
+        quizId = questions.QuizId;
+        get_next_question_robot();
+    });
+
+    socket.on('start', function () {
+        console.log('start');
+        get_next_question();
+    });
+
+    function get_next_question() {
+        if (questionIndex < questionList.length) {
+            var q = questionList[questionIndex];
+            questionIndex++;
+            var response = prompt(q.QTitle + ': ' + q.Option1 + ', ' + q.Option2 + ', ' + q.Option3 + ', ' + q.Option4);
+            answerStatus = false;
+            if (q.Answer == q["Option" + response])
+                answerStatus = true;
+
+            socket.emit('notify_answered', response, status, q, quizId, opponentAnswered);
+        }
+        else
+            socket.emit('quiz_finished', quizId, userAnswers);
+    }
+
+    function get_next_question_robot() {
+        if (questionIndex < questionList.length) {
+            var q = questionList[questionIndex];
+            questionIndex++;
+            var response = prompt(q.QTitle + ': ' + q.Option1 + ', ' + q.Option2 + ', ' + q.Option3 + ', ' + q.Option4);
+
+
+            get_next_question_robot();
+
+        }
+        else
+            socket.emit('quiz_finished', quizId, userAnswers);
+    }
+
+
+    socket.on('notify_answered_opponent', function (isAnswered) {
+        opponentAnswered = isAnswered;
+        console.log('notif ' + opponentAnswered);
+
+    });
+
+
+    socket.on('get_next_question', function () {
+        get_next_question();
+    });
+
+    socket.on('notify_robot_selected', function (catId) {
+        socket.emit('submit_opponent_robot', catId);
+    });
+
+    //user A
+    socket.on('submit_opponent_auto', function (catId, opponentId) {
+        socket.emit('submit_opponent_auto', catId, opponentId);
+    });
+
+    //user B
+    socket.on('notify_user_found', function (catId, opponentId) {
+        console.log(opponentId);
+    });
+
+    socket.on('message', function (username, data) {
+        $('#conversation').append('<b>' + username + ':</b> ' + data + '<br>');
+    });
+
+    // listener, whenever the server emits 'updatechat', this updates the chat body
+    socket.on('updatechat', function (username, data) {
+        $('#conversation').append('<b>' + username + ':</b> ' + data + '<br>');
+    });
+
+    function updatechat(username, data) {
+        $('#conversation').append('<b>' + username + ':</b> ' + data + '<br>');
+    }
+
+    //socket.on('update_waiting_list', function (data) {
+    //    $('#users').empty();
+    //    if (randomCatId != 0) {
+    //        $.each(data, function (key, value) {
+    //            if (myProfileId != value.ProfileId && value.CatId == randomCatId)
+    //                $('#users').append('<div style="cursor:pointer;" onclick="submit_opponent(\'' + value.CatId + '\',\'' + value.ProfileId +'\')">' + value.ProfileId + ' in cat ' + value.CatId + '</div>');
+    //        });
+    //    }
+    //});
+
+    //function submit_opponent(catId, opponentId) {
+    //    socket.emit('submit_opponent', catId, opponentId);
+    //}
+
+
+    // on load of page
+    $(function () {
+        $('#choose_player').click(function () {
+            var opponentId = prompt("Opponent id?");
+            var catId = prompt("Category id? 29, 30");
+            socket.emit('submit_opponent', catId, opponentId);
+        });
+
+        $('#random_player').click(function () {
+            var catId = prompt("Category id? 29, 30");
+            //randomCatId = catId;
+            socket.emit('add_to_waiting_list', catId);
+        });
+
+        $('#group_enter').click(function () {
+            socket.emit('add_to_group_room');
+            $('#group_enter').attr("disabled", true);
+        });
+
+        $('#group_start').click(function () {
+            var groupGameId = prompt("groupGameId?");
+            socket.emit('start_group_game', groupGameId);
+            $('#group_start').attr("disabled", true);
+        });
+
+        $('#pause').click(function () {
+            socket.emit('pause_game');
+        });
+
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('isAdmin')) {
+            $("#admin_panel").show();
+        } else {
+            $("#group_enter").show();
+        }
+    });
+
+</script>
+<!--<input type="button" id="choose_player" value="choose player" />
+<input type="button" id="random_player" value="random player" />-->
+<input type="button" id="group_enter" value="Join" style="display:none" />
+<div style="display:none" id="admin_panel">
+    <input type="button" id="group_start" value="Start game" />
+    <input type="button" id="pause" value="toggle pause game" />
+</div>
+<!--<div style="float:left;width:100px;border-right:1px solid black;height:300px;padding:10px;overflow:scroll-y;">
+    <b>USERS</b>
+    <div id="users"></div>
+</div>-->
+
+<div style="height:250px;overflow:scroll-y;padding:10px;">
+    <div id="conversation"></div>
+
+    <!--<input id="data" style="width:200px;" />
+    <input type="button" id="datasend" value="send" />-->
+</div>
+</body>
+</html>

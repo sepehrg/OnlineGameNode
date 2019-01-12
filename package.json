@@ -18,7 +18,10 @@
   "homepage": "https://github.com/Frankenmint/mmserver#readme",
   "dependencies": {
     "express": "^4.14.0",
-    "socket.io": "^1.5.1",
-     "nodemon": "^1.11.0"
+    "jquery": "^3.3.1",
+    "jsdom": "^13.0.0",
+    "node-schedule": "^1.3.1",
+    "nodemon": "^1.11.0",
+    "socket.io": "^1.5.1"
   }
 }
