@@ -1,21 +1,21 @@
 {
-  "name": "mmserver",
+  "name": "OnlineGameNode",
   "version": "1.0.0",
-  "description": "game server matchmaking demo made by Frakenmint with ♥️",
+  "description": "",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Frankenmint/mmserver.git"
+    "url": "git+https://github.com/sepehrg/OnlineGameNode.git"
   },
-  "author": "Frankenmint",
+  "author": "Sepehr",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/Frankenmint/mmserver/issues"
+    "url": "https://github.com/sepehrg/OnlineGameNode/issues"
   },
-  "homepage": "https://github.com/Frankenmint/mmserver#readme",
+  "homepage": "https://github.com/sepehrg/OnlineGameNode#readme",
   "dependencies": {
     "express": "^4.14.0",
     "jquery": "^3.3.1",
@@ -25,3 +25,4 @@
     "socket.io": "^1.5.1"
   }
 }
+
