@@ -16,11 +16,43 @@ var $ = jQuery = require('jquery')(window);
 
 const request = require('request');
 
-var schedule = require('node-schedule');
+var scheduler = require('node-schedule');
 
-var j = schedule.scheduleJob('50 * * * * *', function () {
-    //console.log('The answer to life, the universe, and everything!');
-});
+
+/**
+ * Sets this event complete.<br/>
+ * <em>Side-effect: saves event to persistent storage.</em>
+ */
+//GameEvent.prototype.setComplete = function () {
+//    console.log("setComplete")
+//    var self = this;
+//    delete this._event;
+//};
+
+/////////
+
+
+//// load all pending event from persistent storage...
+//GameEvent.loadAll$(function (err) {
+//    if (err) {
+//        throw new Error('failed to load all PersistentEvents: ' + err);
+//    }
+//    //console.log('loading...')
+//    // from this point on, all persistent events are loaded and running.
+
+//});
+
+
+
+//var j = scheduler.scheduleJob('20 * * * * *', function () {
+//    console.log('The answer to life, the universe, and everything!');
+//});
+////var date = new Date(2019, 0, 13, 15, 39, 30);
+//var date = new Date(2019, 0, 13, 12, 10, 30);
+//console.log(date);
+//var j = scheduler.scheduleJob(date, function () {
+//    console.log('The answer');
+//});
 
 // routing
 app.get('/', function (req, res) {
@@ -28,7 +60,7 @@ app.get('/', function (req, res) {
 });
 
 //var url = 'http://localhost:3030/';
-var url = 'http://192.168.20.196:7373/';
+var url = 'http://192.168.20.168:7373/';
 var serverAvailable = true;
 var profileIds = {};
 var waitingList = [];
@@ -42,6 +74,7 @@ var questionResponses = [];
 var answerTimeout = 5000; //ms
 var scoreMode = false;
 var isPaused = false;
+var notifyMinutesStart = 1;
 
 io.sockets.on('connection', function (socket) {
 
@@ -61,6 +94,10 @@ io.sockets.on('connection', function (socket) {
     });
 
     socket.on('start_group_game', function (groupGameId) {
+        startGroupGame(groupGameId);
+    });
+
+    function startGroupGame(groupGameId) {
         if (io.sockets.adapter.rooms['group']) {
             gameIsStarted = true;
             socket.emit('updatechat', 'SERVER', 'Game started with ' + io.sockets.adapter.rooms['group'].length + ' players');
@@ -73,9 +110,6 @@ io.sockets.on('connection', function (socket) {
                         'Accept': 'application/json',
                         'Accept-Charset': 'utf-8',
                         'token': socket.token
-                    },
-                    form: {
-                        quizId: socket.quizId
                     }
                 };
 
@@ -91,7 +125,7 @@ io.sockets.on('connection', function (socket) {
         } else {
             socket.emit('updatechat', 'SERVER', 'There is no one in the room');
         }
-    });
+    }
 
     socket.on('pause_game', function () {
         if (isPaused) {
@@ -105,8 +139,6 @@ io.sockets.on('connection', function (socket) {
 
     function showQuestion() {
         var question = questions[questionIndex];
-
-
         if (question) {
             io.to('group').emit('show_question', { question: question, scoreMode: scoreMode });
 
@@ -177,6 +209,55 @@ io.sockets.on('connection', function (socket) {
             result.push({ 'key': v.key, 'count': v.values.length });
         });
         return result;
+    }
+
+    socket.on('load_schedules', function (scheduleList) {
+        Object.values(scheduleList.Data).forEach(function (sch) {
+            var gameArgs = { "GameType": sch.GameType, "IsTest": sch.IsTest, "Id": sch.Id };
+            //console.log(gameArgs)
+            var event = new GameEvent(new Date(sch.StartDate).addMinutes(-notifyMinutesStart), "notifyStartGame", gameArgs);
+            event.schedule();
+            var event2 = new GameEvent(new Date(sch.StartDate), "startGame", gameArgs);
+            event2.schedule();
+        });
+    });
+
+    var GameEvent = function (when, what, args) {
+        this.when = when;
+        this.what = what;
+        this.args = args;
+    };
+
+    GameEvent.Actions = {
+        startGame: function (args, cb) {
+            //args = args || [];
+            console.log('startGame: ' + new Date());
+            startGroupGame(args.Id);
+        },
+        notifyStartGame: function (args, cb) {
+            console.log('notifyStartGame: ' + new Date());
+            socket.broadcast.emit('notify_start_game', notifyMinutesStart);
+        }
+    }
+
+
+    GameEvent.prototype.schedule = function () {
+        var self = this;
+        var handler = GameEvent.Actions[this.what];
+        io.to('admin').emit('updatechat', 'SERVER', this.what + ' is scheduled for ' + self.when);
+        self._event = scheduler.scheduleJob(self.when, function () {
+            handler(self.args, function (err, result) {
+                if (err) {
+                    console.error('event ' + self + ' failed:' + err);
+                }
+                //self.setComplete();
+            });
+        });
+    }
+
+    Date.prototype.addMinutes = function (m) {
+        this.setTime(this.getTime() + (m * 60 * 1000));
+        return this;
     }
 
 
