@@ -18,54 +18,17 @@ const request = require('request');
 
 var scheduler = require('node-schedule');
 
-
-/**
- * Sets this event complete.<br/>
- * <em>Side-effect: saves event to persistent storage.</em>
- */
-//GameEvent.prototype.setComplete = function () {
-//    console.log("setComplete")
-//    var self = this;
-//    delete this._event;
-//};
-
-/////////
-
-
-//// load all pending event from persistent storage...
-//GameEvent.loadAll$(function (err) {
-//    if (err) {
-//        throw new Error('failed to load all PersistentEvents: ' + err);
-//    }
-//    //console.log('loading...')
-//    // from this point on, all persistent events are loaded and running.
-
-//});
-
-
-
-//var j = scheduler.scheduleJob('20 * * * * *', function () {
-//    console.log('The answer to life, the universe, and everything!');
-//});
-////var date = new Date(2019, 0, 13, 15, 39, 30);
-//var date = new Date(2019, 0, 13, 12, 10, 30);
-//console.log(date);
-//var j = scheduler.scheduleJob(date, function () {
-//    console.log('The answer');
-//});
-
 // routing
 app.get('/', function (req, res) {
     res.sendFile(__dirname + '/index.html');
 });
 
-//var url = 'http://localhost:3030/';
-var url = 'http://192.168.20.168:7373/';
+var url = 'http://localhost:3033/';
+//var url = 'http://192.168.20.168:7373/';
 var serverAvailable = true;
 var profileIds = {};
 var waitingList = [];
 var questionsAnswered = [];
-//var quiz = [];
 ////group:
 var questionIndex = 0;
 var questions = [];
@@ -83,14 +46,12 @@ io.sockets.on('connection', function (socket) {
     });
 
     socket.on('add_to_group_room', function () {
-        if (!gameIsStarted) {
-            socket.join('group');
-            socket.emit('updatechat', 'SERVER', 'You have entered the game');
-            io.to('group').emit('update_room_count', io.sockets.adapter.rooms['group'].length);
-            io.to('admin').emit('update_room_count', io.sockets.adapter.rooms['group'].length);
-        } else {
-            socket.emit('updatechat', 'SERVER', 'game is already started');
-        }
+        socket.join('players');
+        socket.emit('updatechat', 'SERVER', 'You have entered the game');
+        io.to('players').emit('update_room_count', io.sockets.adapter.rooms['players'].length);
+        io.to('admin').emit('update_room_count', io.sockets.adapter.rooms['players'].length);
+        if (gameIsStarted)
+            socket.emit('late_join');
     });
 
     socket.on('start_group_game', function (groupGameId) {
@@ -98,9 +59,9 @@ io.sockets.on('connection', function (socket) {
     });
 
     function startGroupGame(groupGameId) {
-        if (io.sockets.adapter.rooms['group']) {
+        if (io.sockets.adapter.rooms['players']) {
             gameIsStarted = true;
-            socket.emit('updatechat', 'SERVER', 'Game started with ' + io.sockets.adapter.rooms['group'].length + ' players');
+            socket.emit('updatechat', 'SERVER', 'Game started with ' + io.sockets.adapter.rooms['players'].length + ' players');
 
             if (serverAvailable) {
                 const options = {
@@ -115,7 +76,10 @@ io.sockets.on('connection', function (socket) {
 
                 request(options, function (err, res, body) {
                     questions = JSON.parse(body).Data;
-                    showQuestion();
+                    if (questions)
+                        showQuestion();
+                    else
+                        socket.emit('updatechat', 'SERVER', 'No questions found');
                 });
             }
             else {
@@ -140,7 +104,7 @@ io.sockets.on('connection', function (socket) {
     function showQuestion() {
         var question = questions[questionIndex];
         if (question) {
-            io.to('group').emit('show_question', { question: question, scoreMode: scoreMode });
+            io.to('players').emit('show_question', { question: question, scoreMode: scoreMode });
 
             //timer for showing answer
             var timer = setInterval(function () {
@@ -148,7 +112,7 @@ io.sockets.on('connection', function (socket) {
                 var t2 = setInterval(function () {
                     if (!isPaused) {
                         clearInterval(t2);
-                        io.to('group').emit('show_answer', { answer: question.Answer, stat: groupByArray(questionResponses, "Answer"), scoreMode: scoreMode });
+                        io.to('players').emit('show_answer', { answer: question.Answer, stat: groupByArray(questionResponses, "Answer"), scoreMode: scoreMode });
                         questionIndex++;
 
                         //timer for showing next question
@@ -250,7 +214,6 @@ io.sockets.on('connection', function (socket) {
                 if (err) {
                     console.error('event ' + self + ' failed:' + err);
                 }
-                //self.setComplete();
             });
         });
     }
@@ -260,8 +223,57 @@ io.sockets.on('connection', function (socket) {
         return this;
     }
 
+    socket.on('send_friend_request', function (friendId) {
+        console.log(friendId)
+        if (serverAvailable) {
+            const options = {
+                url: url + 'api/InsertFriendList?friendId=' + friendId,
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Accept-Charset': 'utf-8',
+                    'token': socket.token
+                }
+            };
+            //console.log(options)
+            request(options, function (err, res, body) {
+                if (JSON.parse(body)) {
+                    console.log("body:" + JSON.parse(body))
 
+                    if (profileIds[friendId])
+                        io.sockets.connected[profileIds[friendId]].emit('show_friend_request', socket.profileId);
+                    socket.emit('updatechat', 'SERVER', 'Friend is invited.');
+                }
+                else
+                    socket.emit('updatechat', 'SERVER', 'Error inviting friend');
+            });
+        }
+        else {
+            socket.emit('updatechat', 'SERVER', 'Feature is not available offline!');
+        }
+    });
 
+    socket.on('respond_friend_request', function (response) {
+        console.log(response);
+
+        const options = {
+            url: url + 'api/UpdateFriendList',
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Accept-Charset': 'utf-8',
+                'token': socket.token
+            },
+            form: {
+                ProfileId: response.InviterId,
+                Status: response.InviteResponse ? 1 : 2
+            }
+        };
+
+        request(options, function (err, res, body) {
+            socket.emit('updatechat', 'SERVER', 'Request updated');
+        });
+    });
 
 
 
@@ -285,7 +297,7 @@ io.sockets.on('connection', function (socket) {
         socket.countAnswer = 0;
         // add the client's profileId to the global list
         profileIds[profileId] = socket.id;
-        //console.log(profileIds);
+        console.log(profileIds);
 
     });
     socket.on('adduserReconnect', function (profileId, opponetId, token) {
@@ -700,8 +712,8 @@ io.sockets.on('connection', function (socket) {
         //io.sockets.emit('updateusers', profileIds);
         // echo globally that this client has left
         ////socket.broadcast.emit('updatechat', 'SERVER', socket.profileId + ' has disconnected');
-        if (io.sockets.adapter.rooms['group'])
-            io.to('group').emit('update_room_count', io.sockets.adapter.rooms['group'].length);
+        if (io.sockets.adapter.rooms['players'])
+            io.to('players').emit('update_room_count', io.sockets.adapter.rooms['players'].length);
 
     });
 
