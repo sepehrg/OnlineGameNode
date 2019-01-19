@@ -102,9 +102,30 @@
             var res = confirm('You are invited to add to friend list by: ' + profileId);
             socket.emit('respond_friend_request', { InviteResponse: res, InviterId: profileId });
         });
-        
-        socket.on('late_join', function () {
+
+        socket.on('late_join', function (info) {
             isLateJoin = true;
+            updatechat(info.CurrentQuestion.QTitle, span(info.CurrentQuestion.Option1) + ' ' + span(info.CurrentQuestion.Option2) + ' ' + span(info.CurrentQuestion.Option3) + ' ' + span(info.CurrentQuestion.Option4));
+            updatechat('SERVER', 'Remaining seconds ' + info.RemainingTime);
+        });
+
+        socket.on('show_friend_list', function (friendList) {
+            $('#friendlist').html("");
+            friendList.forEach(function (item) {
+                $('#friendlist').append('<li>' + item.FriendId + ' (' + (item.IsOnline ? 'online <input type="button" id="' + item.FriendId +'" class= "beep" value = "beep" /> ' : 'offline') + ') ' + '</li > ');
+            });
+        });
+
+        socket.on('notify_friend_list_updated', function () {
+            socket.emit('get_friend_list');
+        });
+
+        socket.on('show_beep', function (profileId) {
+            updatechat('SERVER', 'You are beeped by ' + profileId);
+        });
+
+        socket.on('game_end', function () {
+            updatechat('SERVER', 'Game finished');
         });
 
 
@@ -238,22 +259,7 @@
         function updatechat(username, data) {
             $('#conversation').append('<b>' + username + ':</b> ' + data + '<br>');
         }
-
-        //socket.on('update_waiting_list', function (data) {
-        //    $('#users').empty();
-        //    if (randomCatId != 0) {
-        //        $.each(data, function (key, value) {
-        //            if (myProfileId != value.ProfileId && value.CatId == randomCatId)
-        //                $('#users').append('<div style="cursor:pointer;" onclick="submit_opponent(\'' + value.CatId + '\',\'' + value.ProfileId +'\')">' + value.ProfileId + ' in cat ' + value.CatId + '</div>');
-        //        });
-        //    }
-        //});
-
-        //function submit_opponent(catId, opponentId) {
-        //    socket.emit('submit_opponent', catId, opponentId);
-        //}
-
-
+        
         // on load of page
         $(function () {
             $('#choose_player').click(function () {
@@ -298,6 +304,11 @@
                 var id = prompt("Friend Id?");
                 socket.emit('send_friend_request', id);
             });
+
+            $(document).on('click', '.beep', function () {
+                socket.emit('beep_friend', this.id);
+            });
+
         });
 
     </script>
@@ -316,7 +327,10 @@
         <b>USERS</b>
         <div id="users"></div>
     </div>-->
-
+    <div style="width:200px;position:absolute; top:0; right:0; height:200px;">
+       
+        <div id="friendlist"></div>
+    </div>
     <div style="height:250px;overflow:scroll-y;padding:10px;">
         <div id="conversation"></div>
 
