@@ -40,6 +40,7 @@ var isPaused = false;
 var notifyMinutesStart = 1;
 var nextActionRemainingSeconds = 0;
 var currentQuestion = {};
+var currentGroupGame = {};
 
 io.sockets.on('connection', function (socket) {
 
@@ -58,18 +59,20 @@ io.sockets.on('connection', function (socket) {
         }
     });
 
-    socket.on('start_group_game', function (groupGameId) {
-        startGroupGame(groupGameId);
+    socket.on('start_group_game', function (groupGame) {
+        startGroupGame(groupGame);
     });
 
-    function startGroupGame(groupGameId) {
+    function startGroupGame(groupGame) {
         if (io.sockets.adapter.rooms['players']) {
+            currentGroupGame = groupGame;
+            updateGameStart(groupGame);
             gameIsStarted = true;
             socket.emit('updatechat', 'SERVER', 'Game started with ' + io.sockets.adapter.rooms['players'].length + ' players');
 
             if (serverAvailable) {
                 const options = {
-                    url: url + 'api/GetAllGroupGameQuestions?groupGameId=' + groupGameId,
+                    url: url + 'api/GetAllGroupGameQuestions?groupGameId=' + groupGame.Id,
                     method: 'POST',
                     headers: {
                         'Accept': 'application/json',
@@ -92,6 +95,30 @@ io.sockets.on('connection', function (socket) {
             }
         } else {
             socket.emit('updatechat', 'SERVER', 'There is no one in the room');
+        }
+    }
+
+    function updateGameStart(groupGame) {
+        if (serverAvailable) {
+            groupGame.IsStarted = true;
+            const options = {
+                url: url + 'api/UpdateGroupGame',
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Accept-Charset': 'utf-8',
+                    'token': socket.token
+                },
+                form: groupGame
+            };
+
+            request(options, function (err, res, body) {
+                if (!JSON.parse(body).HasError)
+                    console.log('game updated to started');
+                else
+                    console.log('error updating started');
+
+            });
         }
     }
 
@@ -136,7 +163,7 @@ io.sockets.on('connection', function (socket) {
             questionIndex = 0;
             gameIsStarted = false;
             socket.broadcast.emit("game_end");
-
+            ///
         }
     }
 
@@ -179,7 +206,7 @@ io.sockets.on('connection', function (socket) {
 
     socket.on('load_schedules', function (scheduleList) {
         Object.values(scheduleList.Data).forEach(function (sch) {
-            var gameArgs = { "GameType": sch.GameType, "IsTest": sch.IsTest, "Id": sch.Id };
+            var gameArgs = { "GameInfo": sch };
             var event = new GameEvent(new Date(sch.StartDate).addMinutes(-notifyMinutesStart), "notifyStartGame", gameArgs);
             event.schedule();
             var event2 = new GameEvent(new Date(sch.StartDate), "startGame", gameArgs);
@@ -197,7 +224,7 @@ io.sockets.on('connection', function (socket) {
         startGame: function (args, cb) {
             //args = args || [];
             console.log('startGame: ' + new Date());
-            startGroupGame(args.Id);
+            startGroupGame(args.GameInfo);
         },
         notifyStartGame: function (args, cb) {
             console.log('notifyStartGame: ' + new Date());
@@ -239,7 +266,7 @@ io.sockets.on('connection', function (socket) {
                 if (JSON.parse(body).HasError) {
                     if (JSON.parse(body).Error.ErrorCode == 4) {
                         socket.emit('updatechat', 'SERVER', 'Friend is already invited.');
-                    } 
+                    }
                 }
                 else {
                     if (profileIds[friendId])

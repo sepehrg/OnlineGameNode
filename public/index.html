@@ -76,7 +76,7 @@
                     {
                         "Title": "مسابقه 1",
                         "CreateDate": "2019-01-08T17:00:00",
-                        "StartDate": "2019-01-14T12:10:00",
+                        "StartDate": "2019-01-20T12:06:00",
                         "GameType": 1,
                         "IsTest": false,
                         "IsStarted": false,
@@ -283,8 +283,16 @@
             });
 
             $('#group_start').click(function () {
-                var groupGameId = prompt("groupGameId?");
-                socket.emit('start_group_game', groupGameId);
+                var groupGame = {
+                    "Title": "مسابقه 1",
+                    "CreateDate": "2019-01-08T17:00:00",
+                    "StartDate": "2019-01-14T12:10:00",
+                    "GameType": 1,
+                    "IsTest": false,
+                    "IsStarted": false,
+                    "Id": 2
+                };
+                socket.emit('start_group_game', groupGame);
                 $('#group_start').attr("disabled", true);
             });
 
