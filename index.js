@@ -236,18 +236,17 @@ io.sockets.on('connection', function (socket) {
                 }
             };
             request(options, function (err, res, body) {
-                if (JSON.parse(body)) {
+                if (JSON.parse(body).HasError) {
                     if (JSON.parse(body).Error.ErrorCode == 4) {
                         socket.emit('updatechat', 'SERVER', 'Friend is already invited.');
-                    } else {
-                        if (profileIds[friendId])
-                            io.sockets.connected[profileIds[friendId]].emit('show_friend_request', socket.profileId);
-                        socket.emit('updatechat', 'SERVER', 'Friend is invited.');
-                        getFriendList();
-                    }
+                    } 
                 }
-                else
-                    socket.emit('updatechat', 'SERVER', 'Error inviting friend');
+                else {
+                    if (profileIds[friendId])
+                        io.sockets.connected[profileIds[friendId]].emit('show_friend_request', socket.profileId);
+                    socket.emit('updatechat', 'SERVER', 'Friend is invited.');
+                    getFriendList();
+                }
             });
         }
         else {
@@ -276,7 +275,7 @@ io.sockets.on('connection', function (socket) {
             if (JSON.parse(body).Error.ErrorCode == 0) {
                 socket.emit('updatechat', 'SERVER', 'Request updated');
                 getFriendList();
-                console.log(response.InviterId)
+                //console.log(response.InviterId)
 
                 if (io.sockets.connected[profileIds[response.InviterId]])
                     io.sockets.connected[profileIds[response.InviterId]].emit('notify_friend_list_updated');
@@ -288,7 +287,7 @@ io.sockets.on('connection', function (socket) {
 
     function getFriendList() {
         const options = {
-            url: url + 'api/GetAllFriendList?status=1',
+            url: url + 'api/GetAllFriendList?type=1',
             method: 'POST',
             headers: {
                 'Accept': 'application/json',
@@ -297,7 +296,7 @@ io.sockets.on('connection', function (socket) {
             }
         };
         request(options, function (err, res, body) {
-            if (JSON.parse(body)) {
+            if (JSON.parse(body).Data) {
                 var list = JSON.parse(body).Data;
                 var list2 = [];
                 list.forEach(function (item) {
@@ -311,7 +310,7 @@ io.sockets.on('connection', function (socket) {
                 socket.emit('show_friend_list', list2);
             }
             else
-                socket.emit('updatechat', 'SERVER', 'body not found');
+                console.log('profileId: ' + socket.profileId + ':' + body);
         });
     }
 
@@ -337,6 +336,11 @@ io.sockets.on('connection', function (socket) {
             }
         }, 1000);
     }
+
+    socket.on('get_game_status', function () {
+        socket.emit('show_game_status', gameIsStarted);
+    });
+
 
 
 
@@ -367,9 +371,6 @@ io.sockets.on('connection', function (socket) {
                             io.sockets.connected[profileIds[item.FriendId]].emit('notify_friend_list_updated');
                     }
                 });
-            }
-            else {
-                console.log("socket.friendList is empty");
             }
         }, 1000);
 
@@ -788,13 +789,14 @@ io.sockets.on('connection', function (socket) {
         ////socket.broadcast.emit('updatechat', 'SERVER', socket.profileId + ' has disconnected');
         if (io.sockets.adapter.rooms['players'])
             io.to('players').emit('update_room_count', io.sockets.adapter.rooms['players'].length);
-
-        socket.friendList.forEach(function (item) {
-            if (item.IsOnline) {
-                if (io.sockets.connected[profileIds[item.FriendId]])
-                    io.sockets.connected[profileIds[item.FriendId]].emit('notify_friend_list_updated');
-            }
-        });
+        if (socket.friendList) {
+            socket.friendList.forEach(function (item) {
+                if (item.IsOnline) {
+                    if (io.sockets.connected[profileIds[item.FriendId]])
+                        io.sockets.connected[profileIds[item.FriendId]].emit('notify_friend_list_updated');
+                }
+            });
+        }
     });
 
 });

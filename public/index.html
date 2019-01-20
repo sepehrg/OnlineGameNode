@@ -128,6 +128,9 @@
             updatechat('SERVER', 'Game finished');
         });
 
+        socket.on('show_game_status', function (status) {
+            updatechat('SERVER', 'Game started: '+ status);
+        });
 
 
 
@@ -305,6 +308,10 @@
                 socket.emit('send_friend_request', id);
             });
 
+            $('#gamestatus').click(function () {
+                socket.emit('get_game_status');
+            });
+
             $(document).on('click', '.beep', function () {
                 socket.emit('beep_friend', this.id);
             });
@@ -322,6 +329,7 @@
         <input type="button" id="group_start" value="Start game" />
         <input type="button" id="pause" value="toggle pause game" />
         <input type="button" id="schedule" value="schedule" />
+        <input type="button" id="gamestatus" value="game status" />
     </div>
     <!--<div style="float:left;width:100px;border-right:1px solid black;height:300px;padding:10px;overflow:scroll-y;">
         <b>USERS</b>
