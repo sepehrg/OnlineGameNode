@@ -163,7 +163,6 @@ io.sockets.on('connection', function (socket) {
             questionIndex = 0;
             gameIsStarted = false;
             socket.broadcast.emit("game_end");
-            ///
         }
     }
 
