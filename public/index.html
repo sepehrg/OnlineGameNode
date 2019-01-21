@@ -15,9 +15,10 @@
         var isLateJoin = false;
         var isNotified = false;
         var isLastQuestionResponded = false;
+        var groupGameId = 0;
 
-        var socket = io.connect('http://192.168.20.168:8008');
-        //var socket = io.connect('http://localhost:8008');
+        //var socket = io.connect('http://192.168.20.168:8008');
+        var socket = io.connect('http://localhost:8008');
 
         socket.on('update_room_count', function (count) {
             updatechat('current count', count);
@@ -61,7 +62,7 @@
                 updatechat(v.key, v.count);
             });
             if (isLost && !isNotified && !result.scoreMode && !isLateJoin) {
-                updatechat('SERVER', 'you lose');
+                updatechat('SERVER', 'you lose: ' + groupGameId);
                 isNotified = true;
             }
         });
@@ -90,8 +91,6 @@
                 "HasError": false
             };
             socket.emit('load_schedules', schedulesFromDB);
-            console.log('here')
-
         }
 
         socket.on('notify_start_game', function (minutes) {
@@ -107,6 +106,7 @@
             isLateJoin = true;
             updatechat(info.CurrentQuestion.QTitle, span(info.CurrentQuestion.Option1) + ' ' + span(info.CurrentQuestion.Option2) + ' ' + span(info.CurrentQuestion.Option3) + ' ' + span(info.CurrentQuestion.Option4));
             updatechat('SERVER', 'Remaining seconds ' + info.RemainingTime);
+            groupGameId = info.GroupGameId;
         });
 
         socket.on('show_friend_list', function (friendList) {
@@ -125,14 +125,18 @@
         });
 
         socket.on('game_end', function () {
-            updatechat('SERVER', 'Game finished');
+            updatechat('SERVER', 'Game finished: ' + groupGameId);
         });
 
         socket.on('show_game_status', function (status) {
             updatechat('SERVER', 'Game started: '+ status);
         });
 
-
+        socket.on('set_game_id', function (id) {
+            groupGameId = id
+            updatechat('SERVER', 'Game started: ' + id);
+        });
+        
 
 
 
