@@ -55,7 +55,11 @@ io.sockets.on('connection', function (socket) {
         io.to('admin').emit('update_room_count', io.sockets.adapter.rooms['players'].length);
         if (gameIsStarted) {
 
-            socket.emit('late_join', { 'CurrentQuestion': currentQuestion, 'RemainingTime': nextActionRemainingSeconds });
+            socket.emit('late_join', {
+                'CurrentQuestion': currentQuestion,
+                'RemainingTime': nextActionRemainingSeconds,
+                'GroupGameId': currentGroupGame.Id
+            });
         }
     });
 
@@ -65,6 +69,7 @@ io.sockets.on('connection', function (socket) {
 
     function startGroupGame(groupGame) {
         if (io.sockets.adapter.rooms['players']) {
+            io.to('players').emit('set_game_id', groupGame.Id);
             currentGroupGame = groupGame;
             updateGameStart(groupGame);
             gameIsStarted = true;
@@ -116,7 +121,7 @@ io.sockets.on('connection', function (socket) {
                 if (!JSON.parse(body).HasError)
                     console.log('game updated to started');
                 else
-                    console.log('error updating started');
+                    console.log('error updating started: ' + body);
 
             });
         }
@@ -142,7 +147,12 @@ io.sockets.on('connection', function (socket) {
                 var t2 = setInterval(function () {
                     if (!isPaused) {
                         clearInterval(t2);
-                        io.to('players').emit('show_answer', { answer: currentQuestion.Answer, stat: groupByArray(questionResponses, "Answer"), scoreMode: scoreMode });
+                        io.to('players').emit('show_answer',
+                            {
+                                answer: currentQuestion.Answer,
+                                stat: groupByArray(questionResponses, "Answer"),
+                                scoreMode: scoreMode
+                            });
                         questionIndex++;
 
                         //timer for showing next question
@@ -301,7 +311,6 @@ io.sockets.on('connection', function (socket) {
             if (JSON.parse(body).Error.ErrorCode == 0) {
                 socket.emit('updatechat', 'SERVER', 'Request updated');
                 getFriendList();
-                //console.log(response.InviterId)
 
                 if (io.sockets.connected[profileIds[response.InviterId]])
                     io.sockets.connected[profileIds[response.InviterId]].emit('notify_friend_list_updated');
