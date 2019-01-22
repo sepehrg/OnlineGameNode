@@ -54,7 +54,6 @@ io.sockets.on('connection', function (socket) {
         io.to('players').emit('update_room_count', io.sockets.adapter.rooms['players'].length,gameIsStarted);
         io.to('admin').emit('update_room_count', io.sockets.adapter.rooms['players'].length);
         if (gameIsStarted) {
-
             socket.emit('late_join', {
                 'CurrentQuestion': currentQuestion,
                 'RemainingTime': nextActionRemainingSeconds,
@@ -68,6 +67,13 @@ io.sockets.on('connection', function (socket) {
 			socket.leave('players');
 			//io.to('players').emit('update_room_count', io.sockets.adapter.rooms['players'].length,gameIsStarted);
 
+    });
+
+    socket.on('remove_from_group_room', function () {
+        socket.leave('players');
+        if (io.sockets.adapter.rooms['players']) {
+            io.to('players').emit('update_room_count', io.sockets.adapter.rooms['players'].length);
+        }
     });
 
     socket.on('start_group_game', function (groupGame) {
@@ -180,6 +186,7 @@ io.sockets.on('connection', function (socket) {
             questionIndex = 0;
             gameIsStarted = false;
             socket.broadcast.emit("game_end");
+            calculateGroupGameResult(currentGroupGame.Id);
         }
     }
 
@@ -382,6 +389,28 @@ io.sockets.on('connection', function (socket) {
     socket.on('get_game_status', function () {
         socket.emit('show_game_status', gameIsStarted);
     });
+
+    function calculateGroupGameResult(id) {
+        setTimeout(function () {
+            const options = {
+                url: url + 'api/CalculateGroupGameResult?groupGameId='+id,
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Accept-Charset': 'utf-8',
+                    'token': socket.token
+                }
+            };
+            request(options, function (err, res, body) {
+                if (JSON.parse(body).Data) {
+                    socket.broadcast.emit('show_game_result', JSON.parse(body).Data);
+                    console.log(JSON.parse(body).Data);
+                }
+                else
+                    console.log('calculate result: ' + body);
+            });
+        }, 5000);
+    }
 
 
 

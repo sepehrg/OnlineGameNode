@@ -81,7 +81,8 @@
                         "GameType": 1,
                         "IsTest": false,
                         "IsStarted": false,
-                        "Id": 2
+                        "Id": 2,
+                        "Prize":20000000
                     }
                 ],
                 "Error": {
@@ -126,6 +127,7 @@
 
         socket.on('game_end', function () {
             updatechat('SERVER', 'Game finished: ' + groupGameId);
+            console.log('DB: InsertGroupGameResult');
         });
 
         socket.on('show_game_status', function (status) {
@@ -136,8 +138,11 @@
             groupGameId = id
             updatechat('SERVER', 'Game started: ' + id);
         });
-        
 
+        socket.on('show_game_result', function (result) {
+            updatechat('SERVER', 'Result received');
+            console.log(result)
+        });
 
 
 
@@ -282,8 +287,15 @@
             });
 
             $('#group_enter').click(function () {
-                socket.emit('add_to_group_room');
-                $('#group_enter').attr("disabled", true);
+                if ($(this).val() == "Join") {
+                    socket.emit('add_to_group_room');
+                    $('#group_enter').val("Leave");
+                }
+                else {
+                    socket.emit('remove_from_group_room');
+                    $('#conversation').html("");
+                    $('#group_enter').val("Join");
+                }
             });
 
             $('#group_start').click(function () {
@@ -294,7 +306,8 @@
                     "GameType": 1,
                     "IsTest": false,
                     "IsStarted": false,
-                    "Id": 2
+                    "Id": 2,
+                    "Prize": 20000000
                 };
                 socket.emit('start_group_game', groupGame);
                 $('#group_start').attr("disabled", true);
