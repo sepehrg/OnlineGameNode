@@ -23,8 +23,8 @@ app.get('/', function (req, res) {
     res.sendFile(__dirname + '/index.html');
 });
 
-var url = 'http://localhost:3033/';
-//var url = 'http://192.168.20.168:7373/';
+//var url = 'http://localhost:3033/';
+var url = 'http://192.168.20.168:7373/';
 var serverAvailable = true;
 var profileIds = {};
 var waitingList = [];
@@ -34,7 +34,7 @@ var questionIndex = 0;
 var questions = [];
 var gameIsStarted = false;
 var questionResponses = [];
-var answerTimeout = 5; //seconds
+var answerTimeout = 10; //seconds
 var scoreMode = false;
 var isPaused = false;
 var notifyMinutesStart = 1;
@@ -51,7 +51,7 @@ io.sockets.on('connection', function (socket) {
     socket.on('add_to_group_room', function () {
         socket.join('players');
         socket.emit('updatechat', 'SERVER', 'You have entered the game');
-        io.to('players').emit('update_room_count', io.sockets.adapter.rooms['players'].length);
+        io.to('players').emit('update_room_count', io.sockets.adapter.rooms['players'].length,gameIsStarted);
         io.to('admin').emit('update_room_count', io.sockets.adapter.rooms['players'].length);
         if (gameIsStarted) {
 
@@ -61,6 +61,13 @@ io.sockets.on('connection', function (socket) {
                 'GroupGameId': currentGroupGame.Id
             });
         }
+    });
+		
+    socket.on('left_group', function () {
+			console.log("left group");
+			socket.leave('players');
+			//io.to('players').emit('update_room_count', io.sockets.adapter.rooms['players'].length,gameIsStarted);
+
     });
 
     socket.on('start_group_game', function (groupGame) {
@@ -176,15 +183,15 @@ io.sockets.on('connection', function (socket) {
         }
     }
 
-    socket.on('save_response', function (result) {
+    socket.on('save_response', function (answer,qId) {
         //console.log('DB: profileId:' + socket.profileId + ' questionId:' + result.questionId + ' response:' + result.response);
-        var question = questions.filter(q => q.QuestionID == result.questionId)[0];
+        var question = questions.filter(q => q.QuestionID == qId)[0];
         var correctAnswer = false;
-        if (result.response == question.Answer) {
+        if (answer == question.Answer) {
             correctAnswer = true;
         }
 
-        questionResponses.push({ 'ProfileId': socket.profileId, 'QuestionId': result.questionId, 'Answer': result.response, 'CorrectAnswer': correctAnswer });
+        questionResponses.push({ 'ProfileId': socket.profileId, 'QuestionId': qId, 'Answer': answer, 'CorrectAnswer': correctAnswer });
 
         //if not in score mode and answer is wrong, lose game is called
         if (!scoreMode && !correctAnswer) {
@@ -823,7 +830,7 @@ io.sockets.on('connection', function (socket) {
         // echo globally that this client has left
         ////socket.broadcast.emit('updatechat', 'SERVER', socket.profileId + ' has disconnected');
         if (io.sockets.adapter.rooms['players'])
-            io.to('players').emit('update_room_count', io.sockets.adapter.rooms['players'].length);
+            io.to('players').emit('update_room_count', io.sockets.adapter.rooms['players'].length,gameIsStarted);
         if (socket.friendList) {
             socket.friendList.forEach(function (item) {
                 if (item.IsOnline) {
