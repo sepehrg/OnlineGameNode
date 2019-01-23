@@ -24,7 +24,7 @@ app.get('/', function (req, res) {
 });
 
 //var url = 'http://localhost:3033/';
-var url = 'http://192.168.20.168:7373/';
+var url = 'http://192.168.1.70:7373/';
 var serverAvailable = true;
 var profileIds = {};
 var waitingList = [];
@@ -51,7 +51,7 @@ io.sockets.on('connection', function (socket) {
     socket.on('add_to_group_room', function () {
         socket.join('players');
         socket.emit('updatechat', 'SERVER', 'You have entered the game');
-        io.to('players').emit('update_room_count', io.sockets.adapter.rooms['players'].length,gameIsStarted);
+        io.to('players').emit('update_room_count', io.sockets.adapter.rooms['players'].length);
         io.to('admin').emit('update_room_count', io.sockets.adapter.rooms['players'].length);
         if (gameIsStarted) {
             socket.emit('late_join', {
@@ -166,6 +166,7 @@ io.sockets.on('connection', function (socket) {
                                 stat: groupByArray(questionResponses, "Answer"),
                                 scoreMode: scoreMode
                             });
+							console.log(groupByArray(questionResponses, "Answer"));
                         questionIndex++;
 
                         //timer for showing next question
@@ -859,7 +860,7 @@ io.sockets.on('connection', function (socket) {
         // echo globally that this client has left
         ////socket.broadcast.emit('updatechat', 'SERVER', socket.profileId + ' has disconnected');
         if (io.sockets.adapter.rooms['players'])
-            io.to('players').emit('update_room_count', io.sockets.adapter.rooms['players'].length,gameIsStarted);
+            io.to('players').emit('update_room_count', io.sockets.adapter.rooms['players'].length);
         if (socket.friendList) {
             socket.friendList.forEach(function (item) {
                 if (item.IsOnline) {
