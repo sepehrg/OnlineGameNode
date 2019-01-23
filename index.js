@@ -33,6 +33,7 @@ var questionsAnswered = [];
 var questionIndex = 0;
 var questions = [];
 var gameIsStarted = false;
+var gameStartIsNotified = false;
 var questionResponses = [];
 var answerTimeout = 5; //seconds
 var scoreMode = false;
@@ -178,6 +179,7 @@ io.sockets.on('connection', function (socket) {
         else {
             questionIndex = 0;
             gameIsStarted = false;
+            gameStartIsNotified = false;
             socket.broadcast.emit("game_end");
             calculateGroupGameResult(currentGroupGame.Id);
         }
@@ -244,6 +246,7 @@ io.sockets.on('connection', function (socket) {
         },
         notifyStartGame: function (args, cb) {
             console.log('notifyStartGame: ' + new Date());
+            gameStartIsNotified = true;
             socket.broadcast.emit('notify_start_game', notifyMinutesStart);
         }
     }
@@ -437,7 +440,10 @@ io.sockets.on('connection', function (socket) {
                 });
             }
         }, 1000);
-
+        
+        if (gameStartIsNotified) {
+            socket.emit('notify_start_game', 0);
+        }
     });
     socket.on('adduserReconnect', function (profileId, opponetId, token) {
         // we store the profileId in the socket session for this client
