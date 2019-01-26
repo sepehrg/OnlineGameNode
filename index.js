@@ -84,8 +84,9 @@ io.sockets.on('connection', function (socket) {
     function startGroupGame(groupGame) {
         if (io.sockets.adapter.rooms['players']) {
             io.to('players').emit('set_game_id', groupGame.Id);
+            groupGame.IsStarted = true;
             currentGroupGame = groupGame;
-            updateGameStart(groupGame);
+            updateGroupGame(groupGame);
             gameIsStarted = true;
             socket.emit('updatechat', 'SERVER', 'Game started with ' + io.sockets.adapter.rooms['players'].length + ' players');
 
@@ -117,9 +118,8 @@ io.sockets.on('connection', function (socket) {
         }
     }
 
-    function updateGameStart(groupGame) {
+    function updateGroupGame(groupGame) {
         if (serverAvailable) {
-            groupGame.IsStarted = true;
             const options = {
                 url: url + 'api/UpdateGroupGame',
                 method: 'POST',
@@ -133,12 +133,24 @@ io.sockets.on('connection', function (socket) {
 
             request(options, function (err, res, body) {
                 if (!JSON.parse(body).HasError)
-                    console.log('game updated to started');
+                    console.log('game updated');
                 else
-                    console.log('error updating started: ' + body);
+                    console.log('error updating game: ' + body);
 
             });
         }
+    }
+
+    socket.on('notify_group_game', function (data) {
+        notifyStartGroupGame(data.groupGame, data.minutes);
+    });
+
+    function notifyStartGroupGame(groupGame, minutes) {
+        gameStartIsNotified = true;
+        groupGame.IsStartNotified = true;
+        updateGroupGame(groupGame);
+        console.log(groupGame);
+        socket.broadcast.emit('notify_start_game', minutes);
     }
 
     socket.on('pause_game', function () {
@@ -248,14 +260,10 @@ io.sockets.on('connection', function (socket) {
 
     GameEvent.Actions = {
         startGame: function (args, cb) {
-            //args = args || [];
-            console.log('startGame: ' + new Date());
             startGroupGame(args.GameInfo);
         },
         notifyStartGame: function (args, cb) {
-            console.log('notifyStartGame: ' + new Date());
-            gameStartIsNotified = true;
-            socket.broadcast.emit('notify_start_game', notifyMinutesStart);
+            notifyStartGroupGame(args.GameInfo, notifyMinutesStart)
         }
     }
 
@@ -408,7 +416,7 @@ io.sockets.on('connection', function (socket) {
             request(options, function (err, res, body) {
                 if (JSON.parse(body).Data) {
                     socket.broadcast.emit('show_game_result', JSON.parse(body).Data);
-                    console.log(JSON.parse(body).Data);
+                    //console.log(JSON.parse(body).Data);
                 }
                 else
                     console.log('calculate result: ' + body);

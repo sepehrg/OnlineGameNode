@@ -73,24 +73,24 @@
 
         function schedule() {
             var schedulesFromDB = {
-    "Data": [
-        {
-            "Title": "مسابقه 2",
-            "CreateDate": "2019-01-23T12:00:00",
-            "StartDate": "2019-01-23T12:27:00",
-            "GameType": 1,
-            "IsTest": false,
-            "IsStarted": false,
-            "Prize": "20000000",
-            "Id": 3
-        }
-    ],
-    "Error": {
-        "Message": null,
-        "ErrorCode": 0
-    },
-    "HasError": false
-};
+                "Data": [
+                    {
+                        "Title": "مسابقه 2",
+                        "CreateDate": "2019-01-23T12:00:00",
+                        "StartDate": "2019-01-23T15:00:00",
+                        "GameType": 1,
+                        "IsTest": false,
+                        "IsStarted": false,
+                        "Prize": 20000000,
+                        "Id": 3
+                    }
+                ],
+                "Error": {
+                    "Message": null,
+                    "ErrorCode": 0
+                },
+                "HasError": false
+            };
             socket.emit('load_schedules', schedulesFromDB);
         }
 
@@ -299,19 +299,30 @@
             });
 
             $('#group_start').click(function () {
-                var groupGame = {
+                socket.emit('start_group_game', getGroupGameManual());
+                $('#group_start').attr("disabled", true);
+            });
+
+            $('#notify_start').click(function () {
+                var minutes = prompt("minutes remained to start?");
+                socket.emit('notify_group_game', { 'groupGame': getGroupGameManual(), minutes: minutes });
+                $('#notify_start').attr("disabled", true);
+            });
+
+            function getGroupGameManual() {
+                return {
                     "Title": "مسابقه 1",
                     "CreateDate": "2019-01-08T17:00:00",
                     "StartDate": "2019-01-14T12:10:00",
                     "GameType": 1,
                     "IsTest": false,
                     "IsStarted": false,
+                    "IsStartNotified": false,
                     "Id": 2,
-                    "Prize": 20000000
+                    "Prize": 20000000,
+                    "PrizeText": "دو میلیون ریال",
                 };
-                socket.emit('start_group_game', groupGame);
-                $('#group_start').attr("disabled", true);
-            });
+            }
 
             $('#pause').click(function () {
                 socket.emit('pause_game');
@@ -352,6 +363,7 @@
     </div>
     <div style="display:none" id="admin_panel">
         <input type="button" id="group_start" value="Start game" />
+        <input type="button" id="notify_start" value="Notify start" />
         <input type="button" id="pause" value="toggle pause game" />
         <input type="button" id="schedule" value="schedule" />
         <input type="button" id="gamestatus" value="game status" />
