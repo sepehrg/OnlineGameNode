@@ -46,8 +46,6 @@ var currentGroupGame = {};
 io.sockets.on('connection', function (socket) {
 
     socket.on('add_admin', function () {
-					console.log("add_admin");
-
         socket.join('admin');
     });
 
@@ -67,7 +65,6 @@ io.sockets.on('connection', function (socket) {
 
     socket.on('remove_from_group_room', function () {
         socket.leave('players');
-		console.log("remove_from_group_room");
         if (io.sockets.adapter.rooms['players']) {
             io.to('players').emit('update_room_count', io.sockets.adapter.rooms['players'].length);
             io.to('admin').emit('update_room_count', io.sockets.adapter.rooms['players'].length);
@@ -83,7 +80,6 @@ io.sockets.on('connection', function (socket) {
 
     function startGroupGame(groupGame) {
         if (io.sockets.adapter.rooms['players']) {
-			console.log("startGroupGame");
             io.to('players').emit('set_game_id', groupGame.Id);
             io.to('admin').emit('set_game_id', groupGame.Id);
             groupGame.IsStarted = true;
@@ -214,10 +210,7 @@ io.sockets.on('connection', function (socket) {
     }
 
     socket.on('save_response', function (answer,qId) {
-		console.log("save_response");
-        //console.log('DB: profileId:' + socket.profileId + ' questionId:' + result.questionId + ' response:' + result.response);
         var question = questions.filter(q => q.QuestionID == qId)[0];
-        console.log(answer + ', ' + qId);
         var correctAnswer = false;
         if (answer == question.Answer) {
             correctAnswer = true;
