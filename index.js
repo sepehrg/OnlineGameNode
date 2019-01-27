@@ -38,7 +38,7 @@ var questionResponses = [];
 var answerTimeout = 10; //seconds
 var scoreMode = false;
 var isPaused = false;
-var notifyMinutesStart = 1;
+var notifyMinutesStart = 2;
 var nextActionRemainingSeconds = 0;
 var currentQuestion = {};
 var currentGroupGame = {};
@@ -141,15 +141,18 @@ io.sockets.on('connection', function (socket) {
         }
     }
 
-    socket.on('notify_group_game', function (data) {
-        notifyStartGroupGame(data.groupGame, data.minutes);
+    socket.on('notify_group_game', function (groupGame,minutes) {
+       notifyStartGroupGame(groupGame, minutes);
     });
-
+	
     function notifyStartGroupGame(groupGame, minutes) {
+		var obj = JSON.parse(groupGame);
+		console.log(obj.IsStartNotified);
         gameStartIsNotified = true;
-        groupGame.IsStartNotified = true;
-        updateGroupGame(groupGame);
-        console.log(groupGame);
+        obj.IsStartNotified = true;
+		console.log(obj.IsStartNotified);
+		console.log(obj);
+        updateGroupGame(obj);
         socket.broadcast.emit('notify_start_game', minutes);
     }
 
