@@ -23,8 +23,8 @@ app.get('/', function (req, res) {
     res.sendFile(__dirname + '/index.html');
 });
 
-var url = 'http://localhost:3033/';
-//var url = 'http://192.168.20.168:7373/';
+//var url = 'http://localhost:3033/';
+var url = 'http://192.168.1.70:7373/';
 var serverAvailable = true;
 var profileIds = {};
 var waitingList = [];
@@ -35,10 +35,10 @@ var questions = [];
 var gameIsStarted = false;
 var gameStartIsNotified = false;
 var questionResponses = [];
-var answerTimeout = 5; //seconds
+var answerTimeout = 10; //seconds
 var scoreMode = false;
 var isPaused = false;
-var notifyMinutesStart = 1;
+var notifyMinutesStart = 2;
 var nextActionRemainingSeconds = 0;
 var currentQuestion = {};
 var currentGroupGame = {};
@@ -61,6 +61,13 @@ io.sockets.on('connection', function (socket) {
                 'GroupGameId': currentGroupGame.Id
             });
         }
+    });
+		
+    socket.on('left_group', function () {
+			console.log("left group");
+			socket.leave('players');
+			//io.to('players').emit('update_room_count', io.sockets.adapter.rooms['players'].length,gameIsStarted);
+
     });
 
     socket.on('remove_from_group_room', function () {
@@ -134,15 +141,18 @@ io.sockets.on('connection', function (socket) {
         }
     }
 
-    socket.on('notify_group_game', function (data) {
-        notifyStartGroupGame(data.groupGame, data.minutes);
+    socket.on('notify_group_game', function (groupGame,minutes) {
+       notifyStartGroupGame(groupGame, minutes);
     });
-
+	
     function notifyStartGroupGame(groupGame, minutes) {
+		var obj = JSON.parse(groupGame);
+		console.log(obj.IsStartNotified);
         gameStartIsNotified = true;
-        groupGame.IsStartNotified = true;
-        updateGroupGame(groupGame);
-        console.log(groupGame);
+        obj.IsStartNotified = true;
+		console.log(obj.IsStartNotified);
+		console.log(obj);
+        updateGroupGame(obj);
         socket.broadcast.emit('notify_start_game', minutes);
     }
 
@@ -172,6 +182,7 @@ io.sockets.on('connection', function (socket) {
                                 stat: groupByArray(questionResponses, "Answer"),
                                 scoreMode: scoreMode
                             });
+							console.log(groupByArray(questionResponses, "Answer"));
                         questionIndex++;
 
                         //timer for showing next question
@@ -197,15 +208,15 @@ io.sockets.on('connection', function (socket) {
         }
     }
 
-    socket.on('save_response', function (result) {
+    socket.on('save_response', function (answer,qId) {
         //console.log('DB: profileId:' + socket.profileId + ' questionId:' + result.questionId + ' response:' + result.response);
-        var question = questions.filter(q => q.QuestionID == result.questionId)[0];
+        var question = questions.filter(q => q.QuestionID == qId)[0];
         var correctAnswer = false;
-        if (result.response == question.Answer) {
+        if (answer == question.Answer) {
             correctAnswer = true;
         }
 
-        questionResponses.push({ 'ProfileId': socket.profileId, 'QuestionId': result.questionId, 'Answer': result.response, 'CorrectAnswer': correctAnswer });
+        questionResponses.push({ 'ProfileId': socket.profileId, 'QuestionId': qId, 'Answer': answer, 'CorrectAnswer': correctAnswer });
 
         //if not in score mode and answer is wrong, lose game is called
         if (!scoreMode && !correctAnswer) {
