@@ -17,6 +17,8 @@
         var isLastQuestionResponded = false;
         var groupGameId = 0;
 
+        const urlParams = new URLSearchParams(window.location.search);
+
         //var socket = io.connect('http://192.168.20.168:8008');
         var socket = io.connect('http://localhost:8008');
 
@@ -26,7 +28,7 @@
 
         socket.on('show_question', function (result) {
             questionId = result.question.QuestionID;
-            if ((isLost && !result.scoreMode) || isLateJoin)
+            if ((isLost && !result.scoreMode) || isLateJoin || urlParams.get('isAdmin'))
                 updatechat(result.question.QTitle, span(result.question.Option1) + ' ' + span(result.question.Option2) + ' ' + span(result.question.Option3) + ' ' + span(result.question.Option4));
             else
                 updatechat(result.question.QTitle, button(result.question.Option1) + ' ' + button(result.question.Option2) + ' ' + button(result.question.Option3) + ' ' + button(result.question.Option4));
@@ -45,14 +47,14 @@
         });
 
         function saveResponse(response) {
-            socket.emit('save_response', { response: response, questionId: questionId });
+            socket.emit('save_response', response, questionId);
             isLastQuestionResponded = true;
         }
 
         socket.on('show_answer', function (result) {
-            if (!isLastQuestionResponded) {
+            if (!isLastQuestionResponded && !urlParams.get('isAdmin') && !isLost) {
                 if (!isLateJoin)
-                    socket.emit('save_response', { response: '', questionId: questionId });
+                    socket.emit('save_response', '', questionId);
                 isLost = true;
             }
             isLastQuestionResponded = false;
@@ -154,7 +156,6 @@
         // on connection to server, ask for user's name with an anonymous callback
         socket.on('connect', function () {
             // call the server-side function 'adduser' and send one parameter (value of prompt)
-            const urlParams = new URLSearchParams(window.location.search);
             const token = urlParams.get('token');
             myProfileId = urlParams.get('profileid');
             socket.emit('adduser', myProfileId, token);
@@ -305,12 +306,12 @@
 
             $('#notify_start').click(function () {
                 var minutes = prompt("minutes remained to start?");
-                socket.emit('notify_group_game', { 'groupGame': getGroupGameManual(), minutes: minutes });
+                socket.emit('notify_group_game', getGroupGameManual(), minutes);
                 $('#notify_start').attr("disabled", true);
             });
 
             function getGroupGameManual() {
-                return {
+                return `{
                     "Title": "مسابقه 1",
                     "CreateDate": "2019-01-08T17:00:00",
                     "StartDate": "2019-01-14T12:10:00",
@@ -320,15 +321,14 @@
                     "IsStartNotified": false,
                     "Id": 2,
                     "Prize": 20000000,
-                    "PrizeText": "دو میلیون ریال",
-                };
+                    "PrizeText": "دو میلیون ریال"
+                }`;
             }
 
             $('#pause').click(function () {
                 socket.emit('pause_game');
             });
 
-            const urlParams = new URLSearchParams(window.location.search);
             if (urlParams.get('isAdmin')) {
                 $("#admin_panel").show();
             } else {
