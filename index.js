@@ -407,16 +407,10 @@ io.sockets.on('connection', function (socket) {
             }
         }, 1000);
     }
-	
 
     socket.on('get_game_status', function () {
         socket.emit('show_game_status', gameIsStarted);
     });
-	
-	   socket.on('test1', function () {
-        calculateGroupGameResult(2);
-    });
-	
 	
     function calculateGroupGameResult(id) {
         setTimeout(function () {
