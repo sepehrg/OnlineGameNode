@@ -28,7 +28,7 @@
 
         socket.on('show_question', function (result) {
             questionId = result.question.QuestionID;
-            if ((isLost && !result.scoreMode) || isLateJoin || urlParams.get('isAdmin'))
+            if ((isLost && result.gameType == 1) || isLateJoin || urlParams.get('isAdmin'))
                 updatechat(result.question.QTitle, span(result.question.Option1) + ' ' + span(result.question.Option2) + ' ' + span(result.question.Option3) + ' ' + span(result.question.Option4));
             else
                 updatechat(result.question.QTitle, button(result.question.Option1) + ' ' + button(result.question.Option2) + ' ' + button(result.question.Option3) + ' ' + button(result.question.Option4));
@@ -63,7 +63,7 @@
             $.each(result.stat, function (k, v) {
                 updatechat(v.key, v.count);
             });
-            if (isLost && !isNotified && !result.scoreMode && !isLateJoin) {
+            if (isLost && !isNotified && result.gameType == 1 && !isLateJoin) {
                 updatechat('SERVER', 'you lose: ' + groupGameId);
                 isNotified = true;
             }

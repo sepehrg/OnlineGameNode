@@ -36,12 +36,12 @@ var gameIsStarted = false;
 var gameStartIsNotified = false;
 var questionResponses = [];
 var answerTimeout = 10; //seconds
-var scoreMode = false;
+var gameType = 1; // 1: hazfi, 2: emtiazi
 var isPaused = false;
 var notifyMinutesStart = 2;
 var nextActionRemainingSeconds = 0;
 var currentQuestion = {};
-var currentGroupGame = {};
+var currentGroupGameId = 0;
 
 io.sockets.on('connection', function (socket) {
 
@@ -58,7 +58,7 @@ io.sockets.on('connection', function (socket) {
             socket.emit('late_join', {
                 'CurrentQuestion': currentQuestion,
                 'RemainingTime': nextActionRemainingSeconds,
-                'GroupGameId': currentGroupGame.Id
+                'GroupGameId': currentGroupGameId
             });
         }
     });
@@ -82,9 +82,9 @@ io.sockets.on('connection', function (socket) {
         if (io.sockets.adapter.rooms['players']) {
             io.to('players').emit('set_game_id', groupGame.Id);
             io.to('admin').emit('set_game_id', groupGame.Id);
-            groupGame.IsStarted = true;
-            currentGroupGame = groupGame;
-            updateGroupGame(groupGame);
+            currentGroupGameId = groupGame.Id;
+            gameType = groupGame.GameType;
+            updateGroupGame({ "Id": currentGroupGameId, "IsStarted": true });
             gameIsStarted = true;
             socket.emit('updatechat', 'SERVER', 'Game started with ' + io.sockets.adapter.rooms['players'].length + ' players');
 
@@ -164,8 +164,8 @@ io.sockets.on('connection', function (socket) {
     function showQuestion() {
         currentQuestion = questions[questionIndex];
         if (currentQuestion) {
-            io.to('players').emit('show_question', { question: currentQuestion, scoreMode: scoreMode });
-            io.to('admin').emit('show_question', { question: currentQuestion, scoreMode: scoreMode });
+            io.to('players').emit('show_question', { question: currentQuestion, gameType: gameType });
+            io.to('admin').emit('show_question', { question: currentQuestion, gameType: gameType });
             //timer for showing answer
             countDown(function () {
                 var t2 = setInterval(function () {
@@ -175,13 +175,13 @@ io.sockets.on('connection', function (socket) {
                             {
                                 answer: currentQuestion.Answer,
                                 stat: groupByArray(questionResponses, "Answer"),
-                                scoreMode: scoreMode
+                                gameType: gameType
                             });
                         io.to('admin').emit('show_answer',
                             {
                                 answer: currentQuestion.Answer,
                                 stat: groupByArray(questionResponses, "Answer"),
-                                scoreMode: scoreMode
+                                gameType: gameType
                             });
                         questionIndex++;
 
@@ -205,7 +205,8 @@ io.sockets.on('connection', function (socket) {
             gameStartIsNotified = false;
             io.to('players').emit("game_end");
             io.to('admin').emit("game_end");
-            calculateGroupGameResult(currentGroupGame.Id);
+            calculateGroupGameResult(currentGroupGameId);
+            updateGroupGame({ "Id": currentGroupGameId, "IsFinished": true });
         }
     }
 
@@ -219,7 +220,7 @@ io.sockets.on('connection', function (socket) {
         questionResponses.push({ 'ProfileId': socket.profileId, 'QuestionId': qId, 'Answer': answer, 'CorrectAnswer': correctAnswer });
 
         //if not in score mode and answer is wrong, lose game is called
-        if (!scoreMode && !correctAnswer) {
+        if (gameType == 1 && !correctAnswer) {
             socket.emit("lose_game");
         }
     });
@@ -430,11 +431,14 @@ io.sockets.on('connection', function (socket) {
 
 
 
+    socket.on('get_online_count', function () {
+        getOnlineCount();
+    });
 
-
-
-
-
+    function getOnlineCount() {
+    io.to('admin').emit('update_online_count', io.engine.clientsCount);
+    }
+    
 
 
 
@@ -445,7 +449,8 @@ io.sockets.on('connection', function (socket) {
         socket.profileId = profileId;
         socket.timer = 0;
         socket.countAnswer = 0;
-        // add the client's profileId to the global list
+        getOnlineCount();   
+             // add the client's profileId to the global list
         profileIds[profileId] = socket.id;
         //console.log(profileIds);
         getFriendList();
@@ -870,6 +875,9 @@ io.sockets.on('connection', function (socket) {
     socket.on('disconnect', function () {
         // remove the profileId from global profileIds list
         delete profileIds[socket.profileId];
+
+        getOnlineCount();
+
         // update list of users in chat, client-side
         //io.sockets.emit('updateusers', profileIds);
         // echo globally that this client has left
