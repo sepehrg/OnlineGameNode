@@ -428,9 +428,6 @@ io.sockets.on('connection', function (socket) {
         }, 5000);
     }
 
-
-
-
     socket.on('get_online_count', function () {
         getOnlineCount();
     });
